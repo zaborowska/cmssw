@@ -11,10 +11,12 @@
 #include "SimG4CMS/Calo/interface/CaloSD.h"
 #include "SimG4Core/Notification/interface/BeginOfJob.h"
 #include "SimG4Core/Notification/interface/BeginOfEvent.h"
+#include "SimG4CMS/Calo/interface/HGCStepDumper.h"
 #include "SimG4CMS/Calo/interface/HGCNumberingScheme.h"
 #include "SimG4CMS/Calo/interface/HGCMouseBite.h"
 #include "Geometry/HGCalTBCommonData/interface/HGCalTBDDDConstants.h"
 
+#include <memory>
 #include <string>
 #ifdef plotDebug
 #include <TTree.h>
@@ -59,6 +61,8 @@ private:
   bool storeAllG4Hits_, rejectMB_, waferRot_;
   double mouseBiteCut_;
   bool dd4hep_;
+  bool dumpHGCStepPointCloud_;
+  std::unique_ptr<HGCStepDumper> stepDumper_;
   std::vector<double> angles_;
 
 #ifdef plotDebug

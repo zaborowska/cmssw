@@ -80,3 +80,16 @@ g4SimHits:HGCHitsEE:SIM
 g4SimHits:HGCHitsHEfront:SIM
 g4SimHits:HGCHitsHEback:SIM
 ```
+
+To dump the step-level point cloud in a private test config:
+
+```python
+process.TFileService = cms.Service(
+    "TFileService",
+    fileName = cms.string("hgcal_g4steps.root"),
+)
+
+process.g4SimHits.HGCSD.DumpHGCStepPointCloud = cms.untracked.bool(True)
+process.options.numberOfThreads = cms.untracked.uint32(1)
+process.options.numberOfStreams = cms.untracked.uint32(1)
+```

@@ -6,6 +6,7 @@
 #include "DataFormats/Math/interface/FastMath.h"
 
 #include "SimG4CMS/Calo/interface/HGCSD.h"
+#include "SimG4CMS/Calo/interface/HGCStepDumper.h"
 #include "SimG4Core/Notification/interface/TrackInformation.h"
 #include "SimDataFormats/CaloTest/interface/HGCalTestNumbering.h"
 #include "FWCore/Utilities/interface/Exception.h"
@@ -53,11 +54,15 @@ HGCSD::HGCSD(const std::string& name,
   storeAllG4Hits_ = m_HGC.getParameter<bool>("StoreAllG4Hits");
   rejectMB_ = m_HGC.getParameter<bool>("RejectMouseBite");
   waferRot_ = m_HGC.getParameter<bool>("RotatedWafer");
+  dumpHGCStepPointCloud_ = m_HGC.getUntrackedParameter<bool>("DumpHGCStepPointCloud", false);
   angles_ = m_HGC.getUntrackedParameter<std::vector<double>>("WaferAngles");
   double waferSize = m_HGC.getUntrackedParameter<double>("WaferSize") * CLHEP::mm;
   double mouseBite = m_HGC.getUntrackedParameter<double>("MouseBite") * CLHEP::mm;
   mouseBiteCut_ = waferSize * tan(30.0 * CLHEP::deg) - mouseBite;
   dd4hep_ = p.getParameter<bool>("g4GeometryDD4hepSource");
+  if (dumpHGCStepPointCloud_) {
+    stepDumper_ = std::make_unique<HGCStepDumper>();
+  }
 
   if (storeAllG4Hits_) {
     setUseMap(false);
@@ -200,6 +205,9 @@ uint32_t HGCSD::setDetUnitId(const G4Step* aStep) {
     if (mouseBite_->exclude(local, z, layer, wafer, 0))
       id = 0;
   }
+  if (stepDumper_ && id != 0 && aStep->GetTotalEnergyDeposit() > 0.0) {
+    stepDumper_->addStep(aStep, id);
+  }
   return id;
 }
 
@@ -237,11 +245,21 @@ void HGCSD::initRun() {
     tree_->Branch("ThetaAngle", &t_Angle_);
   }
 #endif
+  if (stepDumper_) {
+    edm::Service<TFileService> tfile;
+    if (!tfile.isAvailable()) {
+      throw cms::Exception("BadConfig") << "TFileService is required when DumpHGCStepPointCloud is enabled";
+    }
+    stepDumper_->book(*tfile);
+  }
 }
 
 void HGCSD::initEvent(const BeginOfEvent* g4Event) {
   const G4Event* evt = (*g4Event)();
   t_EventID_ = evt->GetEventID();
+  if (stepDumper_) {
+    stepDumper_->beginEvent(static_cast<unsigned int>(t_EventID_));
+  }
 #ifdef plotDebug
   t_Layer_.clear();
   t_Parcode_.clear();
@@ -257,6 +275,9 @@ void HGCSD::endEvent() {
   if (tree_)
     tree_->Fill();
 #endif
+  if (stepDumper_) {
+    stepDumper_->fill();
+  }
 }
 
 bool HGCSD::filterHit(CaloG4Hit* aHit, double time) {
