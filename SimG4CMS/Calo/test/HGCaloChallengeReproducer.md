@@ -1,10 +1,10 @@
-# HGCaloChallenge reproducer -- fr point-cloud data representation
+# HGCaloChallenge reproducer for point-cloud data
 
-This reproduced is based on `CMSSW_14_0_14` setup which was used initially to produce showers for
+This reproducer is based on the `CMSSW_14_0_14` setup that was used initially to produce showers for
 HGCaloChallenge. This code adds a special file producer for step information from HGCalSD, so that
-detailed position can be stored. Comparison of step level information to HGCal simhits for 50GeV
+detailed positions can be stored. Comparison of step-level information to HGCal simhits for 50 GeV
 photons shows identical output in terms of energy stored and cell multiplicity. There is a small
-difference wrt HGCaloChallenge dataset which likely comes from additional digitisation/calibration.
+difference with respect to the HGCaloChallenge dataset which likely comes from additional digitisation/calibration.
 If needed, this could be added but for now we continue with direct sim output.
 
 ## Environment setup
@@ -40,7 +40,7 @@ The selected plugin should be under this CMSSW area:
 ../biglib/el9_amd64_gcc12/pluginSimulation.so
 ```
 
-## Validation test: 1000 50GeV photons
+## Validation test: 1000 50 GeV photons
 
 The current generated config is expected in:
 
@@ -48,7 +48,7 @@ The current generated config is expected in:
 SimG4CMS/Calo/test/python/hgcal_photon_50gev_eta2_phi90_GEN_SIM_cfg.py
 ```
 
-To enable the Geant4 step dump, addition that is done is:
+To enable the Geant4 step dump, add:
 
 ```python
 process.TFileService = cms.Service(
@@ -96,10 +96,10 @@ pdg_id
 ```
 
 `edep_GeV` is raw Geant4 deposited energy. `edep_pcalohit_GeV` is the weighted
-step energy from the normal HGCAL sensitive-detector, and should sum to the
+step energy from the normal HGCAL sensitive-detector path, and should sum to the
 same event energy as the corresponding simhits after aggregation.
 
-Note: Both of them seem to be giving same results? Staying with the current implementation in case it changes.
+Note: both energy branches give the same result in the current 50 GeV photon test. Keep both branches in case this changes for other samples.
 
 ## Visualisation
 
@@ -107,8 +107,8 @@ From `CMSSW_14_0_14/src`:
 
 ```bash
 python3 SimG4CMS/Calo/test/plot_hgcstep_pointcloud.py \
-  --sim SimG4CMS/Calo/test/python//hgcal_photon_50gev_eta2_phi90_GEN-SIM.root \
-  --steps SimG4CMS/Calo/test/python//hgcal_g4steps.root \
+  --sim SimG4CMS/Calo/test/python/hgcal_photon_50gev_eta2_phi90_GEN-SIM.root \
+  --steps SimG4CMS/Calo/test/python/hgcal_g4steps.root \
   --reference /eos/geant4/fastSim/CMS_HGCal/gamma_hex/discrete_50GeV_HGCal_showers50.h5 \
   --max-events 1000 \
   --outdir plots_stepcloud \
@@ -119,8 +119,8 @@ Use raw Geant4 step energy instead of weighted step energy with:
 
 ```bash
 python3 SimG4CMS/Calo/test/plot_hgcstep_pointcloud.py \
-  --sim SimG4CMS/Calo/test/python//hgcal_photon_50gev_eta2_phi90_GEN-SIM.root \
-  --steps SimG4CMS/Calo/test/python//hgcal_g4steps.root \
+  --sim SimG4CMS/Calo/test/python/hgcal_photon_50gev_eta2_phi90_GEN-SIM.root \
+  --steps SimG4CMS/Calo/test/python/hgcal_g4steps.root \
   --reference /eos/geant4/fastSim/CMS_HGCal/gamma_hex/discrete_50GeV_HGCal_showers50.h5 \
   --max-events 1000 \
   --step-energy raw
