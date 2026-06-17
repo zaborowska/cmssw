@@ -8,7 +8,9 @@
 
 #include "SimG4CMS/Calo/interface/CaloSD.h"
 #include "SimG4Core/Notification/interface/BeginOfJob.h"
+#include "SimG4Core/Notification/interface/BeginOfEvent.h"
 #include "SimG4CMS/Calo/interface/HGCalNumberingScheme.h"
+#include "SimG4CMS/Calo/interface/HGCStepDumper.h"
 #include "SimG4CMS/Calo/interface/HGCGuardRing.h"
 #include "SimG4CMS/Calo/interface/HGCMouseBite.h"
 #include "SimG4CMS/Calo/interface/HGCGuardRingPartial.h"
@@ -35,10 +37,13 @@ protected:
   using CaloSD::update;
   void update(const BeginOfJob *) override;
   void initRun() override;
+  void initEvent(const BeginOfEvent *) override;
+  void endEvent() override;
   bool filterHit(CaloG4Hit *, double) override;
   void processSecondHit(const G4Step *, const G4Track *) override;
 
 private:
+  void bookStepDumper();
   uint32_t setDetUnitId(int, int, int, int, G4ThreeVector &);
   bool isItinFidVolume(const G4ThreeVector &);
   bool calibCell(const uint32_t &id);
@@ -69,6 +74,9 @@ private:
   std::string missingFile_;
   bool calibCell_;
   double fraction_;
+  bool dumpHGCStepPointCloud_;
+  uint32_t currentStepCellId_;
+  std::unique_ptr<HGCStepDumper> stepDumper_;
 };
 
 #endif  // HGCalSD_h

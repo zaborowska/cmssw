@@ -1,95 +1,127 @@
-# HGCaloChallenge Reproducer Notes
+# HGCaloChallenge reproducer -- fr point-cloud data representation
 
-This note records the local photon test used to compare CMSSW HGCAL `PCaloHit`
-output with the HGCaloChallenge cell-energy reference.
+This reproduced is based on `CMSSW_14_0_14` setup which was used initially to produce showers for
+HGCaloChallenge. This code adds a special file producer for step information from HGCalSD, so that
+detailed position can be stored. Comparison of step level information to HGCal simhits for 50GeV
+photons shows identical output in terms of energy stored and cell multiplicity. There is a small
+difference wrt HGCaloChallenge dataset which likely comes from additional digitisation/calibration.
+If needed, this could be added but for now we continue with direct sim output.
 
-The old standalone fragment lived in:
-
-```text
-../../tmp/HGCaloChallengePointCloud/Generation/python/hgcal_challenge_photon_50gev_eta2_phi90_cfi.py
-```
-
-That fragment is only needed if regenerating the old `cmsDriver.py` config from
-the standalone package. For the Calo package workflow, the useful piece is the
-existing GEN-SIM ROOT file plus the comparison script in this directory.
-
-## Environment
+## Environment setup
 
 ```bash
 source /cvmfs/cms.cern.ch/cmsset_default.sh
 export SCRAM_ARCH=el9_amd64_gcc12
 export SITECONFIG_PATH=/cvmfs/cms.cern.ch/SITECONF/T2_CH_CERN
-
-cd /home/azaborow/CMSSW/CMSSW_14_0_14/src
+cmsrel CMSSW_14_0_14
+cd CMSSW_14_0_14/src
 cmsenv
 ```
 
-## Old GEN-SIM Command
+## Build
 
-The 50 GeV photon test used:
-
-```bash
-cmsDriver.py HGCaloChallengePointCloud/Generation/hgcal_challenge_photon_50gev_eta2_phi90_cfi \
-  -s GEN,SIM \
-  -n 1000 \
-  --conditions auto:phase2_realistic_T33 \
-  --beamspot HGCALCloseBy \
-  --datatier GEN-SIM \
-  --eventcontent FEVTDEBUG \
-  --geometry Extended2026D110 \
-  --era Phase2C17I13M9 \
-  --fileout file:hgcal_photon_50gev_eta2_phi90_GEN-SIM.root \
-  --python_filename hgcal_photon_50gev_eta2_phi90_GEN_SIM_cfg.py \
-  --no_exec
-```
-
-Run with:
+Only `SimG4CMS/Calo` has been modified:
 
 ```bash
-cmsRun hgcal_photon_50gev_eta2_phi90_GEN_SIM_cfg.py
+scram b -j 8 SimG4CMS/Calo
+scram b -j 8
+edmPluginRefresh
 ```
 
-## HGCaloChallenge Comparison
-
-Use the Calo-package plotting script:
+Optional check if the correct library is taken:
 
 ```bash
-python3 SimG4CMS/Calo/test/plot_hgcalchallenge_summaries.py \
-  --sim ../../tmp/hgcal_photon_50gev_eta2_phi90_GEN-SIM.root \
-  --reference /eos/geant4/fastSim/CMS_HGCal/gamma_hex/discrete_50GeV_HGCal_showers50.h5 \
-  --outdir plots_hgcalchallenge \
-  --prefix photon_50gev
+edmPluginDump --files | grep -A1 -E 'HGCalSensitiveDetector|HGCSensitiveDetector'
 ```
 
-The overlay compares:
-
-- raw CMSSW HGCAL `PCaloHit.energy()`
-- CMSSW simhits aggregated per event by `detid`
-- HGCaloChallenge nonzero HDF5 cell energies
-
-The aggregation is:
+The selected plugin should be under this CMSSW area:
 
 ```text
-cell_energy[detid] += hit.energy()
+../biglib/el9_amd64_gcc12/pluginSimulation.so
 ```
 
-The default simhit collections are:
+## Validation test: 1000 50GeV photons
+
+The current generated config is expected in:
 
 ```text
-g4SimHits:HGCHitsEE:SIM
-g4SimHits:HGCHitsHEfront:SIM
-g4SimHits:HGCHitsHEback:SIM
+SimG4CMS/Calo/test/python/hgcal_photon_50gev_eta2_phi90_GEN_SIM_cfg.py
 ```
 
-To dump the step-level point cloud in a private test config:
+To enable the Geant4 step dump, addition that is done is:
 
 ```python
 process.TFileService = cms.Service(
     "TFileService",
     fileName = cms.string("hgcal_g4steps.root"),
 )
-
 process.g4SimHits.HGCSD.DumpHGCStepPointCloud = cms.untracked.bool(True)
-process.options.numberOfThreads = cms.untracked.uint32(1)
-process.options.numberOfStreams = cms.untracked.uint32(1)
+```
+
+It can be run from `SimG4CMS/Calo/test/python/`:
+
+```bash
+cmsRun hgcal_photon_50gev_eta2_phi90_GEN_SIM_cfg.py
+```
+
+Expected outputs:
+
+```text
+hgcal_photon_50gev_eta2_phi90_GEN-SIM.root
+hgcal_g4steps.root
+```
+
+## Output file content
+
+The step dump writes one `TTree` entry per event, with vector branches. Current
+tree names are:
+
+```text
+HGCStepPointCloud_HGCEE
+HGCStepPointCloud_HGCHEF
+```
+
+Important branches:
+
+```text
+event
+cell_id
+x_mm, y_mm, z_mm
+x_mid_mm, y_mid_mm, z_mid_mm
+edep_GeV
+edep_pcalohit_GeV
+time_ns
+track_id
+pdg_id
+```
+
+`edep_GeV` is raw Geant4 deposited energy. `edep_pcalohit_GeV` is the weighted
+step energy from the normal HGCAL sensitive-detector, and should sum to the
+same event energy as the corresponding simhits after aggregation.
+
+Note: Both of them seem to be giving same results? Staying with the current implementation in case it changes.
+
+## Visualisation
+
+From `CMSSW_14_0_14/src`:
+
+```bash
+python3 SimG4CMS/Calo/test/plot_hgcstep_pointcloud.py \
+  --sim SimG4CMS/Calo/test/python//hgcal_photon_50gev_eta2_phi90_GEN-SIM.root \
+  --steps SimG4CMS/Calo/test/python//hgcal_g4steps.root \
+  --reference /eos/geant4/fastSim/CMS_HGCal/gamma_hex/discrete_50GeV_HGCal_showers50.h5 \
+  --max-events 1000 \
+  --outdir plots_stepcloud \
+  --prefix photon_50gev_steps
+```
+
+Use raw Geant4 step energy instead of weighted step energy with:
+
+```bash
+python3 SimG4CMS/Calo/test/plot_hgcstep_pointcloud.py \
+  --sim SimG4CMS/Calo/test/python//hgcal_photon_50gev_eta2_phi90_GEN-SIM.root \
+  --steps SimG4CMS/Calo/test/python//hgcal_g4steps.root \
+  --reference /eos/geant4/fastSim/CMS_HGCal/gamma_hex/discrete_50GeV_HGCal_showers50.h5 \
+  --max-events 1000 \
+  --step-energy raw
 ```

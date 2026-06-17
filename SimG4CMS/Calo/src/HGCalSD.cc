@@ -7,8 +7,11 @@
 #include "DataFormats/Math/interface/FastMath.h"
 #include "DataFormats/ForwardDetId/interface/HGCSiliconDetId.h"
 #include "SimG4CMS/Calo/interface/HGCalSD.h"
+#include "SimG4CMS/Calo/interface/HGCStepDumper.h"
 #include "SimG4Core/Notification/interface/TrackInformation.h"
+#include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/Utilities/interface/Exception.h"
+#include "CommonTools/UtilAlgos/interface/TFileService.h"
 #include "Geometry/HGCalCommonData/interface/HGCalDDDConstants.h"
 #include "Geometry/HGCalCommonData/interface/HGCalGeometryMode.h"
 #include "G4LogicalVolumeStore.hh"
@@ -70,7 +73,9 @@ HGCalSD::HGCalSD(const std::string& name,
   missingFile_ = m_HGC.getUntrackedParameter<std::string>("MissingWaferFile");
   checkID_ = m_HGC.getUntrackedParameter<bool>("CheckID");
   verbose_ = m_HGC.getUntrackedParameter<int>("Verbosity");
+  dumpHGCStepPointCloud_ = m_HGC.getUntrackedParameter<bool>("DumpHGCStepPointCloud", false);
   dd4hep_ = p.getParameter<bool>("g4GeometryDD4hepSource");
+  currentStepCellId_ = 0;
 
   if (storeAllG4Hits_) {
     setUseMap(false);
@@ -86,6 +91,17 @@ HGCalSD::HGCalSD(const std::string& name,
   } else if (myName_.find("HitsHEfront") != std::string::npos) {
     mydet_ = DetId::HGCalHSi;
     nameX_ = "HGCalHESiliconSensitive";
+  }
+  if (dumpHGCStepPointCloud_) {
+    std::string treeName = "HGCStepPointCloud";
+    if (mydet_ == DetId::HGCalEE) {
+      treeName += "_HGCEE";
+    } else if (mydet_ == DetId::HGCalHSi) {
+      treeName += "_HGCHEF";
+    } else {
+      treeName += "_Unknown";
+    }
+    stepDumper_ = std::make_unique<HGCStepDumper>(treeName);
   }
 
 #ifdef EDM_ML_DEBUG
@@ -108,6 +124,8 @@ HGCalSD::HGCalSD(const std::string& name,
 }
 
 double HGCalSD::getEnergyDeposit(const G4Step* aStep) {
+  const uint32_t stepCellId = currentStepCellId_;
+  currentStepCellId_ = 0;
   double r = aStep->GetPreStepPoint()->GetPosition().perp();
   double z = std::abs(aStep->GetPreStepPoint()->GetPosition().z());
 #ifdef EDM_ML_DEBUG
@@ -131,6 +149,9 @@ double HGCalSD::getEnergyDeposit(const G4Step* aStep) {
   double destep = weight_ * wt1 * (aStep->GetTotalEnergyDeposit());
   if (wt2 > 0)
     destep *= wt2;
+  if (stepDumper_ && stepCellId != 0 && destep > 0.0 && aStep->GetTotalEnergyDeposit() > 0.0) {
+    stepDumper_->addStep(aStep, stepCellId, destep);
+  }
 #ifdef EDM_ML_DEBUG
   edm::LogVerbatim("HGCSim") << "HGCalSD: weights= " << weight_ << ":" << wt1 << ":" << wt2 << " Total weight "
                              << weight_ * wt1 * wt2 << " deStep: " << aStep->GetTotalEnergyDeposit() << ":" << destep;
@@ -139,6 +160,7 @@ double HGCalSD::getEnergyDeposit(const G4Step* aStep) {
 }
 
 uint32_t HGCalSD::setDetUnitId(const G4Step* aStep) {
+  currentStepCellId_ = 0;
   const G4StepPoint* preStepPoint = aStep->GetPreStepPoint();
   const G4VTouchable* touch = preStepPoint->GetTouchable();
   fraction_ = 1.0;
@@ -261,6 +283,7 @@ uint32_t HGCalSD::setDetUnitId(const G4Step* aStep) {
   if ((id != 0) && calibCells_)
     calibCell_ = calibCell(id);
 
+  currentStepCellId_ = id;
   return id;
 }
 
@@ -340,7 +363,30 @@ void HGCalSD::update(const BeginOfJob* job) {
       waferSize_, hgcons_->getUVMax(0), hgcons_->getUVMax(1), guardRingOffset_, mouseBiteCut_);
 }
 
-void HGCalSD::initRun() {}
+void HGCalSD::initRun() { bookStepDumper(); }
+
+void HGCalSD::initEvent(const BeginOfEvent* g4Event) {
+  if (stepDumper_) {
+    const G4Event* evt = (*g4Event)();
+    stepDumper_->beginEvent(static_cast<unsigned int>(evt->GetEventID()));
+  }
+}
+
+void HGCalSD::endEvent() {
+  if (stepDumper_) {
+    stepDumper_->fill();
+  }
+}
+
+void HGCalSD::bookStepDumper() {
+  if (stepDumper_) {
+    edm::Service<TFileService> tfile;
+    if (!tfile.isAvailable()) {
+      throw cms::Exception("BadConfig") << "TFileService is required when DumpHGCStepPointCloud is enabled";
+    }
+    stepDumper_->book(*tfile);
+  }
+}
 
 bool HGCalSD::filterHit(CaloG4Hit* aHit, double time) {
   return ((time <= tmaxHit) && (aHit->getEnergyDeposit() > eminHit_));

@@ -26,6 +26,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <string>
 
 //#define EDM_ML_DEBUG
 
@@ -60,9 +61,7 @@ HGCSD::HGCSD(const std::string& name,
   double mouseBite = m_HGC.getUntrackedParameter<double>("MouseBite") * CLHEP::mm;
   mouseBiteCut_ = waferSize * tan(30.0 * CLHEP::deg) - mouseBite;
   dd4hep_ = p.getParameter<bool>("g4GeometryDD4hepSource");
-  if (dumpHGCStepPointCloud_) {
-    stepDumper_ = std::make_unique<HGCStepDumper>();
-  }
+  currentStepCellId_ = 0;
 
   if (storeAllG4Hits_) {
     setUseMap(false);
@@ -81,6 +80,19 @@ HGCSD::HGCSD(const std::string& name,
   } else if (myName.find("HitsHEback") != std::string::npos) {
     myFwdSubdet_ = ForwardSubdetector::HGCHEB;
     nameX_ = "HGCalHEScintillatorSensitive";
+  }
+  if (dumpHGCStepPointCloud_) {
+    std::string treeName = "HGCStepPointCloud";
+    if (myFwdSubdet_ == ForwardSubdetector::HGCEE) {
+      treeName += "_HGCEE";
+    } else if (myFwdSubdet_ == ForwardSubdetector::HGCHEF) {
+      treeName += "_HGCHEF";
+    } else if (myFwdSubdet_ == ForwardSubdetector::HGCHEB) {
+      treeName += "_HGCHEB";
+    } else {
+      treeName += "_Unknown";
+    }
+    stepDumper_ = std::make_unique<HGCStepDumper>(treeName);
   }
 
 #ifdef EDM_ML_DEBUG
@@ -102,6 +114,8 @@ HGCSD::HGCSD(const std::string& name,
 }
 
 double HGCSD::getEnergyDeposit(const G4Step* aStep) {
+  const uint32_t stepCellId = currentStepCellId_;
+  currentStepCellId_ = 0;
   double r = aStep->GetPreStepPoint()->GetPosition().perp();
   double z = std::abs(aStep->GetPreStepPoint()->GetPosition().z());
 
@@ -124,6 +138,9 @@ double HGCSD::getEnergyDeposit(const G4Step* aStep) {
   double destep = wt1 * aStep->GetTotalEnergyDeposit();
   if (wt2 > 0)
     destep *= wt2;
+  if (stepDumper_ && stepCellId != 0 && destep > 0.0 && aStep->GetTotalEnergyDeposit() > 0.0) {
+    stepDumper_->addStep(aStep, stepCellId, destep);
+  }
 
 #ifdef plotDebug
   const G4VTouchable* touch = aStep->GetPreStepPoint()->GetTouchable();
@@ -146,6 +163,7 @@ double HGCSD::getEnergyDeposit(const G4Step* aStep) {
 }
 
 uint32_t HGCSD::setDetUnitId(const G4Step* aStep) {
+  currentStepCellId_ = 0;
   const G4StepPoint* preStepPoint = aStep->GetPreStepPoint();
   const G4VTouchable* touch = preStepPoint->GetTouchable();
 
@@ -205,9 +223,7 @@ uint32_t HGCSD::setDetUnitId(const G4Step* aStep) {
     if (mouseBite_->exclude(local, z, layer, wafer, 0))
       id = 0;
   }
-  if (stepDumper_ && id != 0 && aStep->GetTotalEnergyDeposit() > 0.0) {
-    stepDumper_->addStep(aStep, id);
-  }
+  currentStepCellId_ = id;
   return id;
 }
 
@@ -245,6 +261,10 @@ void HGCSD::initRun() {
     tree_->Branch("ThetaAngle", &t_Angle_);
   }
 #endif
+  bookStepDumper();
+}
+
+void HGCSD::bookStepDumper() {
   if (stepDumper_) {
     edm::Service<TFileService> tfile;
     if (!tfile.isAvailable()) {

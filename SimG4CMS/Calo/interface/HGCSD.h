@@ -46,6 +46,7 @@ protected:
   bool filterHit(CaloG4Hit *, double) override;
 
 private:
+  void bookStepDumper();
   uint32_t setDetUnitId(ForwardSubdetector &, int, int, int, int, G4ThreeVector &);
   bool isItinFidVolume(const G4ThreeVector &) { return true; }
 
@@ -62,6 +63,7 @@ private:
   double mouseBiteCut_;
   bool dd4hep_;
   bool dumpHGCStepPointCloud_;
+  uint32_t currentStepCellId_;
   std::unique_ptr<HGCStepDumper> stepDumper_;
   std::vector<double> angles_;
 
