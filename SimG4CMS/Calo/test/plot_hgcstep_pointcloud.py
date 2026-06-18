@@ -298,17 +298,16 @@ PLOT_STYLES = {
     },
     "G4 simhits with positions": {
         "color": "#2ca02c",
-        "histtype": "stepfilled",
-        "alpha": 0.16,
-        "edgecolor": "#2ca02c",
-        "linewidth": 1.0,
-        "zorder": 3,
+        "histtype": "step",
+        "linestyle": "-",
+        "linewidth": 1.8,
+        "zorder": 8,
     },
     "G4 simhits with positions aggregated cells": {
         "color": "#2ca02c",
         "histtype": "step",
-        "linestyle": "--",
-        "linewidth": 2.2,
+        "linestyle": ":",
+        "linewidth": 1.7,
         "zorder": 7,
     },
 }
@@ -359,7 +358,8 @@ def draw_panels(title, panels, output, bins, density):
     plt.close(fig)
 
 
-def simhit_panels(sim, ref):
+def simhit_panels(sim, ref, simhit_cloud=None):
+    positioned_panels = positioned_simhit_panels(simhit_cloud)
     return [
         (
             "N hits / cells per event",
@@ -368,6 +368,7 @@ def simhit_panels(sim, ref):
             [
                 ("CMSSW raw simhits", sim["n_hits"]),
                 ("CMSSW aggregated cells", sim["n_cells"]),
+                *positioned_panels[0],
                 ("HGCaloChallenge cells", ref["n_cells"]),
             ],
             False,
@@ -380,6 +381,7 @@ def simhit_panels(sim, ref):
             [
                 ("CMSSW raw simhits", sim["total_energy"]),
                 ("CMSSW aggregated cells", sim["cell_total_energy"]),
+                *positioned_panels[1],
                 ("HGCaloChallenge cells", ref["total_energy"]),
             ],
             False,
@@ -392,6 +394,7 @@ def simhit_panels(sim, ref):
             [
                 ("CMSSW raw simhits", np.log10(finite_positive(sim["hit_energy"]))),
                 ("CMSSW aggregated cells", np.log10(finite_positive(sim["cell_energy"]))),
+                *positioned_panels[2],
                 ("HGCaloChallenge cells", np.log10(finite_positive(ref["cell_energy"]))),
             ],
             True,
@@ -404,6 +407,7 @@ def simhit_panels(sim, ref):
             [
                 ("CMSSW raw simhits", sim["hit_multiplicity"]),
                 ("CMSSW aggregated cells", np.ones(sim["cell_energy"].size, dtype=np.float64)),
+                *positioned_panels[3],
                 ("HGCaloChallenge cells", ref["hit_multiplicity"]),
             ],
             True,
@@ -497,17 +501,46 @@ def step_panels(steps, ref, simhit_cloud=None):
     ]
 
 
+def positioned_simhit_panels(simhit_cloud):
+    if simhit_cloud is None or not simhit_cloud["n_hits"].size:
+        return [
+            [],
+            [],
+            [],
+            [],
+        ]
+    return [
+        [
+            ("G4 simhits with positions", simhit_cloud["n_hits"]),
+            ("G4 simhits with positions aggregated cells", simhit_cloud["n_cells"]),
+        ],
+        [
+            ("G4 simhits with positions", simhit_cloud["total_energy"]),
+            ("G4 simhits with positions aggregated cells", simhit_cloud["cell_total_energy"]),
+        ],
+        [
+            ("G4 simhits with positions", np.log10(finite_positive(simhit_cloud["hit_energy"]))),
+            ("G4 simhits with positions aggregated cells", np.log10(finite_positive(simhit_cloud["cell_energy"]))),
+        ],
+        [
+            ("G4 simhits with positions", simhit_cloud["hit_multiplicity"]),
+            ("G4 simhits with positions aggregated cells", np.ones(simhit_cloud["cell_energy"].size, dtype=np.float64)),
+        ],
+    ]
+
+
 def overlay_panels(sim, ref, steps, simhit_cloud=None):
     sim_panels = simhit_panels(sim, ref)
-    step_panels_ = step_panels(steps, ref, simhit_cloud)
+    step_panels_ = step_panels(steps, ref)
+    positioned_panels = positioned_simhit_panels(simhit_cloud)
     panels = []
-    for sim_panel, step_panel in zip(sim_panels, step_panels_):
+    for sim_panel, step_panel, positioned_series in zip(sim_panels, step_panels_, positioned_panels):
         title, xlabel, _, sim_series, log_y, integer_bins = sim_panel
         _, _, _, step_series, _, _ = step_panel
         hgc_series = [item for item in sim_series if item[0] == "HGCaloChallenge cells"]
         sim_only = [item for item in sim_series if item[0] != "HGCaloChallenge cells"]
         step_only = [item for item in step_series if item[0] != "HGCaloChallenge cells"]
-        panels.append((title, xlabel, None, sim_only + hgc_series + step_only, log_y, integer_bins))
+        panels.append((title, xlabel, None, sim_only + positioned_series + step_only + hgc_series, log_y, integer_bins))
     return panels
 
 
@@ -589,20 +622,20 @@ def main():
     overlay_output = outdir / f"{args.prefix}_overlay.png"
     draw_panels(
         "CMSSW simhits vs HGCaloChallenge",
-        with_y_labels(simhit_panels(sim, ref), density),
+        with_y_labels(simhit_panels(sim, ref, simhit_cloud), density),
         sim_output,
         args.bins,
         density,
     )
     draw_panels(
         "HGCAL G4 steps vs HGCaloChallenge",
-        with_y_labels(step_panels(steps, ref, simhit_cloud), density),
+        with_y_labels(step_panels(steps, ref), density),
         steps_output,
         args.bins,
         density,
     )
     draw_panels(
-        "CMSSW simhits vs HGCAL G4 steps vs HGCaloChallenge",
+        "CMSSW simhits vs positioned HGCAL simhits vs G4 steps vs HGCaloChallenge",
         with_y_labels(overlay_panels(sim, ref, steps, simhit_cloud), density),
         overlay_output,
         args.bins,

@@ -133,9 +133,10 @@ python3 SimG4CMS/Calo/test/plot_hgcstep_pointcloud.py \
   --prefix photon_50gev_steps
 ```
 
-This writes separate simhit and step canvases plus a common overlay. When the
-step file contains `HGCSimHitPointCloud_*`, those final simhits-with-position
-distributions are drawn in green.
+This writes separate simhit and step canvases plus a common overlay. The common
+overlay compares CMS `PCaloHit` simhits from the GEN-SIM file to positioned
+simhits from `HGCSimHitPointCloud_*` in green; it does not include step
+distributions.
 
 Use raw Geant4 step energy instead of weighted step energy with:
 
