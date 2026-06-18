@@ -280,71 +280,12 @@ def plot_style(label):
     return dict(PLOT_STYLES.get(label, {"histtype": "step", "linewidth": 1.6}))
 
 
-def plot_overlay(sim, ref, steps, output, bins, density):
+def draw_panels(title, panels, output, bins, density):
     fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
-    fig.suptitle("CMSSW simhits vs HGCAL G4 steps vs HGCaloChallenge")
+    fig.suptitle(title)
     axes = axes.ravel()
 
-    panels = [
-        (
-            "N hits / cells per event",
-            "Count per event",
-            y_label("Events", density),
-            [
-                ("CMSSW raw simhits", sim["n_hits"]),
-                ("CMSSW aggregated cells", sim["n_cells"]),
-                ("HGCaloChallenge cells", ref["n_cells"]),
-                ("G4 steps", steps["n_hits"]),
-                ("G4 steps aggregated cells", steps["n_cells"]),
-            ],
-            False,
-            False,
-        ),
-        (
-            "Total energy per event",
-            "Energy",
-            y_label("Events", density),
-            [
-                ("CMSSW raw simhits", sim["total_energy"]),
-                ("CMSSW aggregated cells", sim["cell_total_energy"]),
-                ("HGCaloChallenge cells", ref["total_energy"]),
-                ("G4 steps", steps["total_energy"]),
-                ("G4 steps aggregated cells", steps["cell_total_energy"]),
-            ],
-            False,
-            False,
-        ),
-        (
-            "log10(E) per hit/cell",
-            "log10(E)",
-            y_label("Hits / cells", density),
-            [
-                ("CMSSW raw simhits", np.log10(finite_positive(sim["hit_energy"]))),
-                ("CMSSW aggregated cells", np.log10(finite_positive(sim["cell_energy"]))),
-                ("HGCaloChallenge cells", np.log10(finite_positive(ref["cell_energy"]))),
-                ("G4 steps", np.log10(finite_positive(steps["hit_energy"]))),
-                ("G4 steps aggregated cells", np.log10(finite_positive(steps["cell_energy"]))),
-            ],
-            True,
-            False,
-        ),
-        (
-            "Hits per occupied cell",
-            "Multiplicity",
-            y_label("Cells", density),
-            [
-                ("CMSSW raw simhits", sim["hit_multiplicity"]),
-                ("CMSSW aggregated cells", np.ones(sim["cell_energy"].size, dtype=np.float64)),
-                ("HGCaloChallenge cells", ref["hit_multiplicity"]),
-                ("G4 steps", steps["hit_multiplicity"]),
-                ("G4 steps aggregated cells", np.ones(steps["cell_energy"].size, dtype=np.float64)),
-            ],
-            True,
-            True,
-        ),
-    ]
-
-    for axis, (title, xlabel, ylabel, series, log_y, integer_bins) in zip(axes, panels):
+    for axis, (panel_title, xlabel, ylabel, series, log_y, integer_bins) in zip(axes, panels):
         if integer_bins:
             max_value = max((float(np.max(finite(values))) for _, values in series if finite(values).size), default=1.0)
             panel_bins = np.arange(0.5, max_value + 1.5, 1.0)
@@ -367,7 +308,7 @@ def plot_overlay(sim, ref, steps, output, bins, density):
                 **hist_kwargs(density),
             )
 
-        axis.set_title(title)
+        axis.set_title(panel_title)
         axis.set_xlabel(xlabel)
         axis.set_ylabel(ylabel)
         axis.grid(True, alpha=0.25)
@@ -378,6 +319,134 @@ def plot_overlay(sim, ref, steps, output, bins, density):
     fig.tight_layout()
     fig.savefig(output, dpi=160)
     plt.close(fig)
+
+
+def simhit_panels(sim, ref):
+    return [
+        (
+            "N hits / cells per event",
+            "Count per event",
+            None,
+            [
+                ("CMSSW raw simhits", sim["n_hits"]),
+                ("CMSSW aggregated cells", sim["n_cells"]),
+                ("HGCaloChallenge cells", ref["n_cells"]),
+            ],
+            False,
+            False,
+        ),
+        (
+            "Total energy per event",
+            "Energy",
+            None,
+            [
+                ("CMSSW raw simhits", sim["total_energy"]),
+                ("CMSSW aggregated cells", sim["cell_total_energy"]),
+                ("HGCaloChallenge cells", ref["total_energy"]),
+            ],
+            False,
+            False,
+        ),
+        (
+            "log10(E) per hit/cell",
+            "log10(E)",
+            None,
+            [
+                ("CMSSW raw simhits", np.log10(finite_positive(sim["hit_energy"]))),
+                ("CMSSW aggregated cells", np.log10(finite_positive(sim["cell_energy"]))),
+                ("HGCaloChallenge cells", np.log10(finite_positive(ref["cell_energy"]))),
+            ],
+            True,
+            False,
+        ),
+        (
+            "Hits per occupied cell",
+            "Multiplicity",
+            None,
+            [
+                ("CMSSW raw simhits", sim["hit_multiplicity"]),
+                ("CMSSW aggregated cells", np.ones(sim["cell_energy"].size, dtype=np.float64)),
+                ("HGCaloChallenge cells", ref["hit_multiplicity"]),
+            ],
+            True,
+            True,
+        ),
+    ]
+
+
+def step_panels(steps, ref):
+    return [
+        (
+            "N hits / cells per event",
+            "Count per event",
+            None,
+            [
+                ("G4 steps", steps["n_hits"]),
+                ("G4 steps aggregated cells", steps["n_cells"]),
+                ("HGCaloChallenge cells", ref["n_cells"]),
+            ],
+            False,
+            False,
+        ),
+        (
+            "Total energy per event",
+            "Energy",
+            None,
+            [
+                ("G4 steps", steps["total_energy"]),
+                ("G4 steps aggregated cells", steps["cell_total_energy"]),
+                ("HGCaloChallenge cells", ref["total_energy"]),
+            ],
+            False,
+            False,
+        ),
+        (
+            "log10(E) per hit/cell",
+            "log10(E)",
+            None,
+            [
+                ("G4 steps", np.log10(finite_positive(steps["hit_energy"]))),
+                ("G4 steps aggregated cells", np.log10(finite_positive(steps["cell_energy"]))),
+                ("HGCaloChallenge cells", np.log10(finite_positive(ref["cell_energy"]))),
+            ],
+            True,
+            False,
+        ),
+        (
+            "Hits per occupied cell",
+            "Multiplicity",
+            None,
+            [
+                ("G4 steps", steps["hit_multiplicity"]),
+                ("G4 steps aggregated cells", np.ones(steps["cell_energy"].size, dtype=np.float64)),
+                ("HGCaloChallenge cells", ref["hit_multiplicity"]),
+            ],
+            True,
+            True,
+        ),
+    ]
+
+
+def overlay_panels(sim, ref, steps):
+    sim_panels = simhit_panels(sim, ref)
+    step_panels_ = step_panels(steps, ref)
+    panels = []
+    for sim_panel, step_panel in zip(sim_panels, step_panels_):
+        title, xlabel, _, sim_series, log_y, integer_bins = sim_panel
+        _, _, _, step_series, _, _ = step_panel
+        hgc_series = [item for item in sim_series if item[0] == "HGCaloChallenge cells"]
+        sim_only = [item for item in sim_series if item[0] != "HGCaloChallenge cells"]
+        step_only = [item for item in step_series if item[0] != "HGCaloChallenge cells"]
+        panels.append((title, xlabel, None, sim_only + hgc_series + step_only, log_y, integer_bins))
+    return panels
+
+
+def with_y_labels(panels, density):
+    labelled = []
+    for title, xlabel, _, series, log_y, integer_bins in panels:
+        ylabel = y_label("Cells" if integer_bins else "Events" if "per event" in title else "Hits / cells", density)
+        labelled.append((title, xlabel, ylabel, series, log_y, integer_bins))
+    return labelled
 
 
 def main():
@@ -434,9 +503,34 @@ def main():
     print_summary("HGCaloChallenge", ref)
     print_summary(f"step cloud ({args.step_energy} energy)", steps)
 
+    density = not args.counts
+    sim_output = outdir / f"{args.prefix}_simhits.png"
+    steps_output = outdir / f"{args.prefix}_steps.png"
     overlay_output = outdir / f"{args.prefix}_overlay.png"
-    plot_overlay(sim, ref, steps, overlay_output, args.bins, not args.counts)
+    draw_panels(
+        "CMSSW simhits vs HGCaloChallenge",
+        with_y_labels(simhit_panels(sim, ref), density),
+        sim_output,
+        args.bins,
+        density,
+    )
+    draw_panels(
+        "HGCAL G4 steps vs HGCaloChallenge",
+        with_y_labels(step_panels(steps, ref), density),
+        steps_output,
+        args.bins,
+        density,
+    )
+    draw_panels(
+        "CMSSW simhits vs HGCAL G4 steps vs HGCaloChallenge",
+        with_y_labels(overlay_panels(sim, ref, steps), density),
+        overlay_output,
+        args.bins,
+        density,
+    )
     print("Wrote:")
+    print(f"  {sim_output}")
+    print(f"  {steps_output}")
     print(f"  {overlay_output}")
 
 
