@@ -4,6 +4,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "SimG4CMS/Calo/interface/CaloSD.h"
+#include "SimG4CMS/Calo/interface/HGCStepDumper.h"
 #include "SimDataFormats/SimHitMaker/interface/CaloSlaveSD.h"
 #include "SimG4Core/Geometry/interface/DD4hep2DDDName.h"
 #include "SimG4Core/Notification/interface/TrackInformation.h"
@@ -841,6 +842,7 @@ void CaloSD::update(const ::EndOfEvent*) {
     if (useMap)
       hitMap[k].erase(hitMap[k].begin(), hitMap[k].end());
   }
+  fillHGCStepDumperSimHitsForCaloSD(this);
   tkMap.erase(tkMap.begin(), tkMap.end());
   boundaryCrossingParentMap_.clear();
 }
@@ -970,6 +972,7 @@ bool CaloSD::saveHit(CaloG4Hit* aHit, int k) {
                                 time,
                                 aHit->getTrackID(),
                                 aHit->getDepth());
+    addHGCStepDumperSimHitForCaloSD(this, aHit, aHit->getTrackID(), time, k);
   }
   // Regular, not-fine way:
   else {
@@ -992,6 +995,7 @@ bool CaloSD::saveHit(CaloG4Hit* aHit, int k) {
 
     slave[k].get()->processHits(
         aHit->getUnitID(), aHit->getEM() / CLHEP::GeV, aHit->getHadr() / CLHEP::GeV, time, tkID, aHit->getDepth());
+    addHGCStepDumperSimHitForCaloSD(this, aHit, tkID, time, k);
   }
 
 #ifdef EDM_ML_DEBUG

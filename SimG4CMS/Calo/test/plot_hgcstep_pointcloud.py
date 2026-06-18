@@ -137,18 +137,17 @@ def read_hgcalchallenge(path, dataset, max_events=None):
     }
 
 
-def step_tree_names(root_file):
+def tree_names(root_file, prefix):
     names = set()
     for key in root_file.GetListOfKeys():
-        if key.GetClassName() == "TTree" and key.GetName().startswith("HGCStepPointCloud"):
+        if key.GetClassName() == "TTree" and key.GetName().startswith(prefix):
             names.add(key.GetName())
     return sorted(names)
 
 
-def read_stepcloud(path, max_events=None, energy="pcalohit"):
+def summarize_pointcloud(path, tree_prefix, energy_branch, max_events=None, missing_ok=False):
     import ROOT
 
-    energy_branch = "edep_pcalohit_GeV" if energy == "pcalohit" else "edep_GeV"
     events = defaultdict(lambda: {"cell_counts": {}, "cell_energy": {}, "n_steps": 0, "total": 0.0, "step_energy": []})
 
     root_file = ROOT.TFile.Open(str(path))
@@ -156,9 +155,11 @@ def read_stepcloud(path, max_events=None, energy="pcalohit"):
         raise RuntimeError(f"Could not open {path}")
 
     try:
-        trees = step_tree_names(root_file)
+        trees = tree_names(root_file, tree_prefix)
         if not trees:
-            raise RuntimeError(f"No HGCStepPointCloud trees found in {path}")
+            if missing_ok:
+                return empty_summary()
+            raise RuntimeError(f"No {tree_prefix} trees found in {path}")
 
         for tree_name in trees:
             rdf = ROOT.RDataFrame(tree_name, str(path))
@@ -212,6 +213,28 @@ def read_stepcloud(path, max_events=None, energy="pcalohit"):
         "cell_energy": np.asarray(cell_energy_parts, dtype=np.float64),
         "hit_multiplicity": np.asarray(step_multiplicity, dtype=np.float64),
     }
+
+
+def empty_summary():
+    empty = np.asarray([], dtype=np.float64)
+    return {
+        "n_hits": empty,
+        "n_cells": empty,
+        "total_energy": empty,
+        "cell_total_energy": empty,
+        "hit_energy": empty,
+        "cell_energy": empty,
+        "hit_multiplicity": empty,
+    }
+
+
+def read_stepcloud(path, max_events=None, energy="pcalohit"):
+    energy_branch = "edep_pcalohit_GeV" if energy == "pcalohit" else "edep_GeV"
+    return summarize_pointcloud(path, "HGCStepPointCloud", energy_branch, max_events)
+
+
+def read_simhitcloud(path, max_events=None):
+    return summarize_pointcloud(path, "HGCSimHitPointCloud", "energy_GeV", max_events, missing_ok=True)
 
 
 def print_summary(name, summary):
@@ -272,6 +295,21 @@ PLOT_STYLES = {
         "linestyle": "--",
         "linewidth": 2.2,
         "zorder": 6,
+    },
+    "G4 simhits with positions": {
+        "color": "#2ca02c",
+        "histtype": "stepfilled",
+        "alpha": 0.16,
+        "edgecolor": "#2ca02c",
+        "linewidth": 1.0,
+        "zorder": 3,
+    },
+    "G4 simhits with positions aggregated cells": {
+        "color": "#2ca02c",
+        "histtype": "step",
+        "linestyle": "--",
+        "linewidth": 2.2,
+        "zorder": 7,
     },
 }
 
@@ -374,7 +412,35 @@ def simhit_panels(sim, ref):
     ]
 
 
-def step_panels(steps, ref):
+def step_panels(steps, ref, simhit_cloud=None):
+    simhit_series = []
+    if simhit_cloud is not None and simhit_cloud["n_hits"].size:
+        simhit_series = [
+            ("G4 simhits with positions", simhit_cloud["n_hits"]),
+            ("G4 simhits with positions aggregated cells", simhit_cloud["n_cells"]),
+        ]
+    simhit_energy_series = []
+    if simhit_cloud is not None and simhit_cloud["total_energy"].size:
+        simhit_energy_series = [
+            ("G4 simhits with positions", simhit_cloud["total_energy"]),
+            ("G4 simhits with positions aggregated cells", simhit_cloud["cell_total_energy"]),
+        ]
+    simhit_loge_series = []
+    if simhit_cloud is not None and simhit_cloud["hit_energy"].size:
+        simhit_loge_series = [
+            ("G4 simhits with positions", np.log10(finite_positive(simhit_cloud["hit_energy"]))),
+            ("G4 simhits with positions aggregated cells", np.log10(finite_positive(simhit_cloud["cell_energy"]))),
+        ]
+    simhit_multiplicity_series = []
+    if simhit_cloud is not None and simhit_cloud["hit_multiplicity"].size:
+        simhit_multiplicity_series = [
+            ("G4 simhits with positions", simhit_cloud["hit_multiplicity"]),
+            (
+                "G4 simhits with positions aggregated cells",
+                np.ones(simhit_cloud["cell_energy"].size, dtype=np.float64),
+            ),
+        ]
+
     return [
         (
             "N hits / cells per event",
@@ -383,6 +449,7 @@ def step_panels(steps, ref):
             [
                 ("G4 steps", steps["n_hits"]),
                 ("G4 steps aggregated cells", steps["n_cells"]),
+                *simhit_series,
                 ("HGCaloChallenge cells", ref["n_cells"]),
             ],
             False,
@@ -395,6 +462,7 @@ def step_panels(steps, ref):
             [
                 ("G4 steps", steps["total_energy"]),
                 ("G4 steps aggregated cells", steps["cell_total_energy"]),
+                *simhit_energy_series,
                 ("HGCaloChallenge cells", ref["total_energy"]),
             ],
             False,
@@ -407,6 +475,7 @@ def step_panels(steps, ref):
             [
                 ("G4 steps", np.log10(finite_positive(steps["hit_energy"]))),
                 ("G4 steps aggregated cells", np.log10(finite_positive(steps["cell_energy"]))),
+                *simhit_loge_series,
                 ("HGCaloChallenge cells", np.log10(finite_positive(ref["cell_energy"]))),
             ],
             True,
@@ -419,6 +488,7 @@ def step_panels(steps, ref):
             [
                 ("G4 steps", steps["hit_multiplicity"]),
                 ("G4 steps aggregated cells", np.ones(steps["cell_energy"].size, dtype=np.float64)),
+                *simhit_multiplicity_series,
                 ("HGCaloChallenge cells", ref["hit_multiplicity"]),
             ],
             True,
@@ -427,9 +497,9 @@ def step_panels(steps, ref):
     ]
 
 
-def overlay_panels(sim, ref, steps):
+def overlay_panels(sim, ref, steps, simhit_cloud=None):
     sim_panels = simhit_panels(sim, ref)
-    step_panels_ = step_panels(steps, ref)
+    step_panels_ = step_panels(steps, ref, simhit_cloud)
     panels = []
     for sim_panel, step_panel in zip(sim_panels, step_panels_):
         title, xlabel, _, sim_series, log_y, integer_bins = sim_panel
@@ -489,19 +559,29 @@ def main():
     sim = read_root_simhits(Path(args.sim), args.label, sim_max)
     ref = read_hgcalchallenge(Path(args.reference), args.h5_dataset, ref_max)
     steps = read_stepcloud(Path(args.steps), step_max, args.step_energy)
+    simhit_cloud = read_simhitcloud(Path(args.steps), step_max)
 
-    common_events = min(sim["n_hits"].size, ref["n_cells"].size, steps["n_hits"].size)
+    event_counts = [sim["n_hits"].size, ref["n_cells"].size, steps["n_hits"].size]
+    if simhit_cloud["n_hits"].size:
+        event_counts.append(simhit_cloud["n_hits"].size)
+    common_events = min(event_counts)
     if sim["n_hits"].size != common_events:
         sim = read_root_simhits(Path(args.sim), args.label, common_events)
     if ref["n_cells"].size != common_events:
         ref = read_hgcalchallenge(Path(args.reference), args.h5_dataset, common_events)
     if steps["n_hits"].size != common_events:
         steps = read_stepcloud(Path(args.steps), common_events, args.step_energy)
+    if simhit_cloud["n_hits"].size and simhit_cloud["n_hits"].size != common_events:
+        simhit_cloud = read_simhitcloud(Path(args.steps), common_events)
 
     print(f"cropped comparison to {common_events} events")
     print_summary("CMSSW simhits", sim)
     print_summary("HGCaloChallenge", ref)
     print_summary(f"step cloud ({args.step_energy} energy)", steps)
+    if simhit_cloud["n_hits"].size:
+        print_summary("G4 simhits with positions", simhit_cloud)
+    else:
+        print("G4 simhits with positions: no HGCSimHitPointCloud trees found")
 
     density = not args.counts
     sim_output = outdir / f"{args.prefix}_simhits.png"
@@ -516,14 +596,14 @@ def main():
     )
     draw_panels(
         "HGCAL G4 steps vs HGCaloChallenge",
-        with_y_labels(step_panels(steps, ref), density),
+        with_y_labels(step_panels(steps, ref, simhit_cloud), density),
         steps_output,
         args.bins,
         density,
     )
     draw_panels(
         "CMSSW simhits vs HGCAL G4 steps vs HGCaloChallenge",
-        with_y_labels(overlay_panels(sim, ref, steps), density),
+        with_y_labels(overlay_panels(sim, ref, steps, simhit_cloud), density),
         overlay_output,
         args.bins,
         density,

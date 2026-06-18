@@ -20,12 +20,11 @@ cmsenv
 
 ## Build
 
-Only `SimG4CMS/Calo` has been modified:
+Only `SimG4CMS/Calo` has been modified. Use the full build so that
+`biglib/el9_amd64_gcc12/pluginSimulation.so` is relinked:
 
 ```bash
-scram b -j 8 SimG4CMS/Calo
 scram b -j 8
-edmPluginRefresh
 ```
 
 Optional check if the correct library is taken:
@@ -73,15 +72,17 @@ hgcal_g4steps.root
 
 ## Output file content
 
-The step dump writes one `TTree` entry per event, with vector branches. Current
-tree names are:
+The point-cloud dump writes one `TTree` entry per event, with vector branches.
+Current tree names are:
 
 ```text
 HGCStepPointCloud_HGCEE
 HGCStepPointCloud_HGCHEF
+HGCSimHitPointCloud_HGCEE
+HGCSimHitPointCloud_HGCHEF
 ```
 
-Important branches:
+Step branches:
 
 ```text
 event
@@ -99,7 +100,24 @@ pdg_id
 step energy from the normal HGCAL sensitive-detector path, and should sum to the
 same event energy as the corresponding simhits after aggregation.
 
-Note: both energy branches give the same result in the current 50 GeV photon test. Keep both branches in case this changes for other samples.
+Simhit-position branches:
+
+```text
+event
+cell_id
+x_mm, y_mm, z_mm
+energy_GeV
+time_ns
+track_id
+depth
+```
+
+These are the final cleaned `CaloG4Hit`s immediately before conversion to
+`PCaloHit`, so `energy_GeV` should match normal simhit energy. The position is
+the stored `CaloG4Hit` position, not an energy-weighted centroid of all steps in
+the merged hit.
+
+Note: both step energy branches give the same result in the current 50 GeV photon test. Keep both branches in case this changes for other samples.
 
 ## Visualisation
 
@@ -114,6 +132,10 @@ python3 SimG4CMS/Calo/test/plot_hgcstep_pointcloud.py \
   --outdir plots_stepcloud \
   --prefix photon_50gev_steps
 ```
+
+This writes separate simhit and step canvases plus a common overlay. When the
+step file contains `HGCSimHitPointCloud_*`, those final simhits-with-position
+distributions are drawn in green.
 
 Use raw Geant4 step energy instead of weighted step energy with:
 

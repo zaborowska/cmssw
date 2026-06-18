@@ -102,6 +102,7 @@ HGCalSD::HGCalSD(const std::string& name,
       treeName += "_Unknown";
     }
     stepDumper_ = std::make_unique<HGCStepDumper>(treeName);
+    registerHGCStepDumperForCaloSD(this, stepDumper_.get());
   }
 
 #ifdef EDM_ML_DEBUG

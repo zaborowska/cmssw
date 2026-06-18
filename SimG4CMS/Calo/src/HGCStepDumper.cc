@@ -1,6 +1,7 @@
 #include "SimG4CMS/Calo/interface/HGCStepDumper.h"
 
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
+#include "SimG4CMS/Calo/interface/CaloG4Hit.h"
 #include "G4ParticleDefinition.hh"
 #include "G4Step.hh"
 #include "G4StepPoint.hh"
@@ -12,11 +13,39 @@
 
 #include "CLHEP/Units/SystemOfUnits.h"
 
+#include <unordered_map>
 #include <utility>
 
 namespace {
 constexpr const char* kTreeTitle = "HGCStepPointCloud";
+constexpr const char* kSimHitTreePrefix = "HGCSimHitPointCloud";
+
+std::unordered_map<const CaloSD*, HGCStepDumper*>& simHitDumperRegistry() {
+  static std::unordered_map<const CaloSD*, HGCStepDumper*> registry;
+  return registry;
+}
 }  // namespace
+
+void registerHGCStepDumperForCaloSD(const CaloSD* sd, HGCStepDumper* dumper) {
+  if (sd && dumper) {
+    simHitDumperRegistry()[sd] = dumper;
+  }
+}
+
+void addHGCStepDumperSimHitForCaloSD(
+    const CaloSD* sd, const CaloG4Hit* hit, int trackId, double time, int) {
+  const auto found = simHitDumperRegistry().find(sd);
+  if (found != simHitDumperRegistry().end()) {
+    found->second->addSimHit(hit, trackId, time);
+  }
+}
+
+void fillHGCStepDumperSimHitsForCaloSD(const CaloSD* sd) {
+  const auto found = simHitDumperRegistry().find(sd);
+  if (found != simHitDumperRegistry().end()) {
+    found->second->fillSimHits();
+  }
+}
 
 HGCStepDumper::HGCStepDumper(std::string treeName) : treeName_(std::move(treeName)) {}
 
@@ -42,6 +71,25 @@ void HGCStepDumper::book(TFileService& fs) {
   tree_->Branch("time_ns", &time_ns_);
   tree_->Branch("track_id", &track_id_);
   tree_->Branch("pdg_id", &pdg_id_);
+
+  std::string simHitTreeName = treeName_;
+  const std::string stepPrefix = "HGCStepPointCloud";
+  if (simHitTreeName.compare(0, stepPrefix.size(), stepPrefix) == 0) {
+    simHitTreeName.replace(0, stepPrefix.size(), kSimHitTreePrefix);
+  } else {
+    simHitTreeName += "_SimHits";
+  }
+  simHitTree_ = new TTree(simHitTreeName.c_str(), "HGCSimHitPointCloud");
+  simHitTree_->SetDirectory(&file);
+  simHitTree_->Branch("event", &event_);
+  simHitTree_->Branch("cell_id", &simhit_cell_id_);
+  simHitTree_->Branch("x_mm", &simhit_x_mm_);
+  simHitTree_->Branch("y_mm", &simhit_y_mm_);
+  simHitTree_->Branch("z_mm", &simhit_z_mm_);
+  simHitTree_->Branch("energy_GeV", &simhit_energy_GeV_);
+  simHitTree_->Branch("time_ns", &simhit_time_ns_);
+  simHitTree_->Branch("track_id", &simhit_track_id_);
+  simHitTree_->Branch("depth", &simhit_depth_);
 }
 
 void HGCStepDumper::beginEvent(unsigned int event) {
@@ -86,9 +134,31 @@ void HGCStepDumper::addStep(const G4Step* step, uint32_t cellId, double weighted
   pdg_id_.push_back(particle ? particle->GetPDGEncoding() : 0);
 }
 
+void HGCStepDumper::addSimHit(const CaloG4Hit* hit, int trackId, double time) {
+  if (!hit || hit->getUnitID() == 0 || !(hit->getEnergyDeposit() > 0.0)) {
+    return;
+  }
+
+  const auto pos = hit->getPosition();
+  simhit_cell_id_.push_back(hit->getUnitID());
+  simhit_x_mm_.push_back(static_cast<float>(pos.x() / CLHEP::mm));
+  simhit_y_mm_.push_back(static_cast<float>(pos.y() / CLHEP::mm));
+  simhit_z_mm_.push_back(static_cast<float>(pos.z() / CLHEP::mm));
+  simhit_energy_GeV_.push_back(static_cast<float>(hit->getEnergyDeposit() / CLHEP::GeV));
+  simhit_time_ns_.push_back(static_cast<float>(time));
+  simhit_track_id_.push_back(trackId);
+  simhit_depth_.push_back(hit->getDepth());
+}
+
 void HGCStepDumper::fill() {
   if (tree_) {
     tree_->Fill();
+  }
+}
+
+void HGCStepDumper::fillSimHits() {
+  if (simHitTree_) {
+    simHitTree_->Fill();
   }
 }
 
@@ -105,4 +175,12 @@ void HGCStepDumper::clear() {
   time_ns_.clear();
   track_id_.clear();
   pdg_id_.clear();
+  simhit_cell_id_.clear();
+  simhit_x_mm_.clear();
+  simhit_y_mm_.clear();
+  simhit_z_mm_.clear();
+  simhit_energy_GeV_.clear();
+  simhit_time_ns_.clear();
+  simhit_track_id_.clear();
+  simhit_depth_.clear();
 }
